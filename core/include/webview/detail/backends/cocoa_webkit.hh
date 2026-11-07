@@ -325,6 +325,62 @@ private:
     }
     return objc::Class_new(cls);
   }
+  // Answers webview://localhost/<path> from the asset table (see
+  // webview_set_asset). Registered on the configuration before the WKWebView
+  // exists, as WebKit requires.
+  id create_url_scheme_handler() {
+    objc::autoreleasepool arp;
+    constexpr auto class_name = "WebviewWKURLSchemeHandler";
+    // Avoid crash due to registering same class twice
+    auto cls = objc_lookUpClass(class_name);
+    if (!cls) {
+      cls = objc_allocateClassPair(objc::get_class("NSObject"), class_name, 0);
+      class_addProtocol(cls, objc_getProtocol("WKURLSchemeHandler"));
+      class_addMethod(cls, objc::selector("webView:startURLSchemeTask:"),
+                      (IMP)(+[](id self, SEL, id, id task) {
+                        auto w = get_associated_webview(self);
+                        w->on_url_scheme_task(task);
+                      }),
+                      "v@:@@");
+      class_addMethod(cls, objc::selector("webView:stopURLSchemeTask:"),
+                      (IMP)(+[](id, SEL, id, id) {}), "v@:@@");
+      objc_registerClassPair(cls);
+    }
+    auto instance{objc::Class_new(cls)};
+    set_associated_webview(instance, this);
+    return instance;
+  }
+  void on_url_scheme_task(id task) {
+    objc::autoreleasepool arp;
+    auto request = objc::msg_send<id>(task, objc::selector("request"));
+    auto url = objc::msg_send<id>(request, objc::selector("URL"));
+    auto path = objc::msg_send<id>(url, objc::selector("path"));
+    auto *asset = find_asset(path ? NSString_get_UTF8String(path) : "");
+    if (!asset) {
+      // NSURLErrorFileDoesNotExist
+      auto error = objc::msg_send<id>(
+          objc::get_class("NSError"),
+          objc::selector("errorWithDomain:code:userInfo:"),
+          NSString_stringWithUTF8String("NSURLErrorDomain"),
+          static_cast<NSInteger>(-1100), static_cast<id>(nullptr));
+      objc::msg_send<void>(task, objc::selector("didFailWithError:"), error);
+      return;
+    }
+    auto response = objc::autorelease(objc::msg_send<id>(
+        objc::msg_send<id>(objc::get_class("NSURLResponse"),
+                           objc::selector("alloc")),
+        objc::selector(
+            "initWithURL:MIMEType:expectedContentLength:textEncodingName:"),
+        url, NSString_stringWithUTF8String(asset->mime),
+        static_cast<NSInteger>(asset->data.size()), static_cast<id>(nullptr)));
+    auto data = objc::msg_send<id>(
+        objc::get_class("NSData"), objc::selector("dataWithBytes:length:"),
+        static_cast<const void *>(asset->data.data()),
+        static_cast<NSUInteger>(asset->data.size()));
+    objc::msg_send<void>(task, objc::selector("didReceiveResponse:"), response);
+    objc::msg_send<void>(task, objc::selector("didReceiveData:"), data);
+    objc::msg_send<void>(task, objc::selector("didFinish"));
+  }
   id create_script_message_handler() {
     objc::autoreleasepool arp;
     constexpr auto class_name = "WebviewWKScriptMessageHandler";
@@ -477,6 +533,12 @@ private:
     auto config{objc::autorelease(WKWebViewConfiguration_new())};
 
     m_manager = WKWebViewConfiguration_get_userContentController(config);
+
+    auto url_scheme_handler = objc::autorelease(create_url_scheme_handler());
+    objc::msg_send<void>(config,
+                         objc::selector("setURLSchemeHandler:forURLScheme:"),
+                         url_scheme_handler,
+                         NSString_stringWithUTF8String("webview"));
 
     auto preferences = WKWebViewConfiguration_get_preferences(config);
     auto yes_value = NSNumber_numberWithBool(true);

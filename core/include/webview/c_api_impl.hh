@@ -194,6 +194,17 @@ WEBVIEW_API webview_error_t webview_set_background_color(webview_t w, int r,
       [=] { return cast_to_webview(w)->set_background_color(r, g, b, a); });
 }
 
+WEBVIEW_API webview_error_t webview_set_asset(webview_t w, const char *path,
+                                              const char *mime,
+                                              const void *data, size_t len) {
+  using namespace webview::detail;
+  if (!path || !mime || (!data && len > 0)) {
+    return WEBVIEW_ERROR_INVALID_ARGUMENT;
+  }
+  return api_filter(
+      [=] { return cast_to_webview(w)->set_asset(path, mime, data, len); });
+}
+
 WEBVIEW_API webview_error_t webview_navigate(webview_t w, const char *url) {
   using namespace webview::detail;
   if (!url) {

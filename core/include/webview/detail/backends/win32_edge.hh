@@ -89,15 +89,22 @@ class webview2_com_handler
     : public ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler,
       public ICoreWebView2CreateCoreWebView2ControllerCompletedHandler,
       public ICoreWebView2WebMessageReceivedEventHandler,
-      public ICoreWebView2PermissionRequestedEventHandler {
+      public ICoreWebView2PermissionRequestedEventHandler,
+      public ICoreWebView2WebResourceRequestedEventHandler {
   using webview2_com_handler_cb_t =
       std::function<void(ICoreWebView2Controller *, ICoreWebView2 *webview)>;
+  using resource_requested_cb_t =
+      std::function<void(ICoreWebView2WebResourceRequestedEventArgs *)>;
 
 public:
   webview2_com_handler(HWND hwnd, msg_cb_t msgCb, webview2_com_handler_cb_t cb)
       : m_window(hwnd), m_msgCb(msgCb), m_cb(cb) {}
 
-  virtual ~webview2_com_handler() = default;
+  virtual ~webview2_com_handler() {
+    if (m_environment) {
+      m_environment->Release();
+    }
+  }
   webview2_com_handler(const webview2_com_handler &other) = delete;
   webview2_com_handler &operator=(const webview2_com_handler &other) = delete;
   webview2_com_handler(webview2_com_handler &&other) = delete;
@@ -131,7 +138,8 @@ public:
     if (cast_if_equal_iid(this, riid, controller_completed, ppv) ||
         cast_if_equal_iid(this, riid, environment_completed, ppv) ||
         cast_if_equal_iid(this, riid, message_received, ppv) ||
-        cast_if_equal_iid(this, riid, permission_requested, ppv)) {
+        cast_if_equal_iid(this, riid, permission_requested, ppv) ||
+        cast_if_equal_iid(this, riid, web_resource_requested, ppv)) {
       return S_OK;
     }
 
@@ -139,6 +147,11 @@ public:
   }
   HRESULT STDMETHODCALLTYPE Invoke(HRESULT res, ICoreWebView2Environment *env) {
     if (SUCCEEDED(res)) {
+      if (m_environment) {
+        m_environment->Release();
+      }
+      env->AddRef();
+      m_environment = env;
       res = env->CreateCoreWebView2Controller(m_window, this);
       if (SUCCEEDED(res)) {
         return S_OK;
@@ -193,6 +206,24 @@ public:
     }
     return S_OK;
   }
+  HRESULT STDMETHODCALLTYPE
+  Invoke(ICoreWebView2 * /*sender*/,
+         ICoreWebView2WebResourceRequestedEventArgs *args) {
+    if (m_resource_requested_cb) {
+      m_resource_requested_cb(args);
+    }
+    return S_OK;
+  }
+
+  // Called for every request the WebResourceRequested filter lets through.
+  void set_resource_requested_handler(resource_requested_cb_t cb) noexcept {
+    m_resource_requested_cb = std::move(cb);
+  }
+
+  // The environment the controller was created from; null until then.
+  ICoreWebView2Environment *environment() const noexcept {
+    return m_environment;
+  }
 
   // Set the function that will perform the initiating logic for creating
   // the WebView2 environment.
@@ -232,6 +263,8 @@ private:
   HWND m_window;
   msg_cb_t m_msgCb;
   webview2_com_handler_cb_t m_cb;
+  resource_requested_cb_t m_resource_requested_cb;
+  ICoreWebView2Environment *m_environment = nullptr;
   std::atomic<ULONG> m_ref_count{1};
   std::function<HRESULT()> m_attempt_handler;
   unsigned int m_max_attempts = 60;
@@ -436,6 +469,65 @@ protected:
                         "put_DefaultBackgroundColor failed"};
     }
     return {};
+  }
+
+  // Answer requests to http://webview.localhost/<path> from the asset table
+  // (see webview_set_asset). Nothing reaches the network.
+  void serve_assets() {
+    m_com_handler->set_resource_requested_handler(
+        [this](ICoreWebView2WebResourceRequestedEventArgs *args) {
+          on_web_resource_requested(args);
+        });
+    m_webview->AddWebResourceRequestedFilter(
+        L"http://webview.localhost/*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL);
+    ::EventRegistrationToken token;
+    m_webview->add_WebResourceRequested(m_com_handler, &token);
+  }
+
+  void on_web_resource_requested(
+      ICoreWebView2WebResourceRequestedEventArgs *args) {
+    auto *env = m_com_handler->environment();
+    if (!env) {
+      return;
+    }
+    ICoreWebView2WebResourceRequest *request = nullptr;
+    if (FAILED(args->get_Request(&request)) || !request) {
+      return;
+    }
+    LPWSTR uri = nullptr;
+    request->get_Uri(&uri);
+    request->Release();
+    std::string url = uri ? narrow_string(uri) : std::string{};
+    CoTaskMemFree(uri);
+
+    // The path is everything from the first '/' after "scheme://host".
+    auto path_start = url.find("://");
+    path_start = path_start == std::string::npos
+                     ? std::string::npos
+                     : url.find('/', path_start + 3);
+    auto *asset = path_start == std::string::npos
+                      ? nullptr
+                      : find_asset(url.substr(path_start));
+
+    ICoreWebView2WebResourceResponse *response = nullptr;
+    if (!asset) {
+      env->CreateWebResourceResponse(nullptr, 404, L"Not Found", L"",
+                                     &response);
+    } else {
+      IStream *stream = SHCreateMemStream(
+          reinterpret_cast<const BYTE *>(asset->data.data()),
+          static_cast<UINT>(asset->data.size()));
+      auto headers = widen_string("Content-Type: " + asset->mime);
+      env->CreateWebResourceResponse(stream, 200, L"OK", headers.c_str(),
+                                     &response);
+      if (stream) {
+        stream->Release();
+      }
+    }
+    if (response) {
+      args->put_Response(response);
+      response->Release();
+    }
   }
 
   noresult set_size_impl(int width, int height, webview_hint_t hints) override {
@@ -821,6 +913,7 @@ private:
     add_init_script("function(message) {\n\
   return window.chrome.webview.postMessage(message);\n\
 }");
+    serve_assets();
     resize_webview();
     m_controller->put_IsVisible(TRUE);
     ShowWindow(m_widget, SW_SHOW);

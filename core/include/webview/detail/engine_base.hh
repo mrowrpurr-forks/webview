@@ -149,6 +149,34 @@ window.__webview__.onUnbind(" +
     return set_background_color_impl(r, g, b, a);
   }
 
+  // Bytes served at a path of the webview's own origin (see webview_set_asset).
+  struct asset_t {
+    std::string mime;
+    std::string data;
+  };
+
+  noresult set_asset(const std::string &path, const std::string &mime,
+                     const void *data, size_t len) {
+    m_assets[normalize_asset_path(path)] =
+        asset_t{mime, std::string(static_cast<const char *>(data), len)};
+    return {};
+  }
+
+  // The asset for a request path ("/a/b.js?x" matches "a/b.js"), or nullptr.
+  const asset_t *find_asset(const std::string &request_path) const {
+    auto it = m_assets.find(normalize_asset_path(request_path));
+    return it == m_assets.end() ? nullptr : &it->second;
+  }
+
+  static std::string normalize_asset_path(const std::string &path) {
+    auto end = path.find_first_of("?#");
+    auto start = path.find_first_not_of('/');
+    if (start == std::string::npos || start >= end) {
+      return {};
+    }
+    return path.substr(start, end == std::string::npos ? end : end - start);
+  }
+
   noresult init(const std::string &js) {
     add_user_script(js);
     return {};
@@ -374,6 +402,7 @@ private:
   }
 
   std::map<std::string, binding_ctx_t> bindings;
+  std::map<std::string, asset_t> m_assets;
   user_script *m_bind_script{};
   std::list<user_script> m_user_scripts;
 
