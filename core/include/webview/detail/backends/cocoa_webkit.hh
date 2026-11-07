@@ -191,8 +191,35 @@ protected:
     NSWindow_set_title(m_window, title);
     return {};
   }
+  noresult set_background_color_impl(int r, int g, int b, int a) override {
+    objc::autoreleasepool arp;
+    if (!m_webview) {
+      return error_info{WEBVIEW_ERROR_INVALID_STATE, "WebView is null"};
+    }
+    // WKWebView has no public API for this on macOS; "drawsBackground" is the
+    // long-standing KVC key Safari-based apps and wry use.
+    NSObject_setValue_forKey(m_webview, NSNumber_numberWithBool(a != 0),
+                             NSString_stringWithUTF8String("drawsBackground"));
+    if (m_window) {
+      auto color = objc::msg_send<id>(
+          objc::get_class("NSColor"),
+          objc::selector("colorWithRed:green:blue:alpha:"), r / 255.0,
+          g / 255.0, b / 255.0, a / 255.0);
+      objc::msg_send<void>(m_window, objc::selector("setOpaque:"),
+                           static_cast<BOOL>(a == 255));
+      objc::msg_send<void>(m_window, objc::selector("setBackgroundColor:"),
+                           color);
+    }
+    return {};
+  }
+
   noresult set_size_impl(int width, int height, webview_hint_t hints) override {
     objc::autoreleasepool arp;
+
+    if (!owns_window()) {
+      // The host created the window; its style and placement are its own.
+      return {};
+    }
 
     auto style = static_cast<NSWindowStyleMask>(
         NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
