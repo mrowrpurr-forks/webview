@@ -153,8 +153,9 @@ WEBVIEW_API webview_error_t webview_set_size(webview_t w, int width, int height,
  * - Windows: sets ICoreWebView2Controller2::DefaultBackgroundColor. The host
  *   window still needs DWM composition that honours alpha (for example
  *   DwmEnableBlurBehindWindow with an empty region) for true transparency.
- * - Other backends: not implemented yet; returns WEBVIEW_ERROR_OK and does
- *   nothing.
+ * - macOS: turns drawsBackground off on the WKWebView and makes the window
+ *   non-opaque with this colour as its background.
+ * - Linux: accepted; does nothing.
  *
  * @param w The webview instance.
  * @param r Red, 0-255.
