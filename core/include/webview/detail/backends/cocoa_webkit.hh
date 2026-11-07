@@ -356,29 +356,35 @@ private:
     auto url = objc::msg_send<id>(request, objc::selector("URL"));
     auto path = objc::msg_send<id>(url, objc::selector("path"));
     auto *asset = find_asset(path ? NSString_get_UTF8String(path) : "");
-    if (!asset) {
-      // NSURLErrorFileDoesNotExist
-      auto error = objc::msg_send<id>(
-          objc::get_class("NSError"),
-          objc::selector("errorWithDomain:code:userInfo:"),
-          NSString_stringWithUTF8String("NSURLErrorDomain"),
-          static_cast<NSInteger>(-1100), static_cast<id>(nullptr));
-      objc::msg_send<void>(task, objc::selector("didFailWithError:"), error);
-      return;
-    }
+    // An HTTP-style response, so WebKit reads the Content-Type (parameters
+    // and all, "text/html; charset=utf-8") the way it would from a server. A
+    // plain NSURLResponse takes a bare MIME type; given one with parameters
+    // it shows HTML as text and refuses module scripts.
+    std::string length = std::to_string(asset ? asset->data.size() : 0);
+    id keys[] = {NSString_stringWithUTF8String("Content-Type"),
+                 NSString_stringWithUTF8String("Content-Length")};
+    id values[] = {
+        NSString_stringWithUTF8String(asset ? asset->mime : "text/plain"),
+        NSString_stringWithUTF8String(length)};
+    auto headers = objc::msg_send<id>(
+        objc::get_class("NSDictionary"),
+        objc::selector("dictionaryWithObjects:forKeys:count:"),
+        static_cast<id *>(values), static_cast<id *>(keys),
+        static_cast<NSUInteger>(2));
     auto response = objc::autorelease(objc::msg_send<id>(
-        objc::msg_send<id>(objc::get_class("NSURLResponse"),
+        objc::msg_send<id>(objc::get_class("NSHTTPURLResponse"),
                            objc::selector("alloc")),
-        objc::selector(
-            "initWithURL:MIMEType:expectedContentLength:textEncodingName:"),
-        url, NSString_stringWithUTF8String(asset->mime),
-        static_cast<NSInteger>(asset->data.size()), static_cast<id>(nullptr)));
-    auto data = objc::msg_send<id>(
-        objc::get_class("NSData"), objc::selector("dataWithBytes:length:"),
-        static_cast<const void *>(asset->data.data()),
-        static_cast<NSUInteger>(asset->data.size()));
+        objc::selector("initWithURL:statusCode:HTTPVersion:headerFields:"),
+        url, static_cast<NSInteger>(asset ? 200 : 404),
+        NSString_stringWithUTF8String("HTTP/1.1"), headers));
     objc::msg_send<void>(task, objc::selector("didReceiveResponse:"), response);
-    objc::msg_send<void>(task, objc::selector("didReceiveData:"), data);
+    if (asset && !asset->data.empty()) {
+      auto data = objc::msg_send<id>(
+          objc::get_class("NSData"), objc::selector("dataWithBytes:length:"),
+          static_cast<const void *>(asset->data.data()),
+          static_cast<NSUInteger>(asset->data.size()));
+      objc::msg_send<void>(task, objc::selector("didReceiveData:"), data);
+    }
     objc::msg_send<void>(task, objc::selector("didFinish"));
   }
   id create_script_message_handler() {
