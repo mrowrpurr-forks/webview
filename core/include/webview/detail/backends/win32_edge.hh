@@ -412,6 +412,32 @@ protected:
     return {};
   }
 
+  noresult set_background_color_impl(int r, int g, int b, int a) override {
+    if (!m_controller) {
+      return error_info{WEBVIEW_ERROR_INVALID_STATE, "Controller is null"};
+    }
+    ICoreWebView2Controller2 *controller2 = nullptr;
+    auto hr = m_controller->QueryInterface(
+        __uuidof(ICoreWebView2Controller2),
+        reinterpret_cast<void **>(&controller2));
+    if (FAILED(hr) || !controller2) {
+      return error_info{WEBVIEW_ERROR_UNSPECIFIED,
+                        "ICoreWebView2Controller2 is not available"};
+    }
+    COREWEBVIEW2_COLOR color{};
+    color.A = static_cast<BYTE>(a);
+    color.R = static_cast<BYTE>(r);
+    color.G = static_cast<BYTE>(g);
+    color.B = static_cast<BYTE>(b);
+    hr = controller2->put_DefaultBackgroundColor(color);
+    controller2->Release();
+    if (FAILED(hr)) {
+      return error_info{WEBVIEW_ERROR_UNSPECIFIED,
+                        "put_DefaultBackgroundColor failed"};
+    }
+    return {};
+  }
+
   noresult set_size_impl(int width, int height, webview_hint_t hints) override {
     auto style = GetWindowLong(m_window, GWL_STYLE);
     if (hints == WEBVIEW_HINT_FIXED) {

@@ -182,6 +182,18 @@ WEBVIEW_API webview_error_t webview_set_size(webview_t w, int width, int height,
       [=] { return cast_to_webview(w)->set_size(width, height, hints); });
 }
 
+WEBVIEW_API webview_error_t webview_set_background_color(webview_t w, int r,
+                                                         int g, int b, int a) {
+  using namespace webview::detail;
+  for (int c : {r, g, b, a}) {
+    if (c < 0 || c > 255) {
+      return WEBVIEW_ERROR_INVALID_ARGUMENT;
+    }
+  }
+  return api_filter(
+      [=] { return cast_to_webview(w)->set_background_color(r, g, b, a); });
+}
+
 WEBVIEW_API webview_error_t webview_navigate(webview_t w, const char *url) {
   using namespace webview::detail;
   if (!url) {

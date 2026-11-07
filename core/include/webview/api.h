@@ -146,6 +146,26 @@ WEBVIEW_API webview_error_t webview_set_size(webview_t w, int width, int height,
                                              webview_hint_t hints);
 
 /**
+ * Sets the colour the browser paints behind the page. With alpha 0 and a page
+ * whose own background is transparent, the native window shows through.
+ *
+ * Remarks:
+ * - Windows: sets ICoreWebView2Controller2::DefaultBackgroundColor. The host
+ *   window still needs DWM composition that honours alpha (for example
+ *   DwmEnableBlurBehindWindow with an empty region) for true transparency.
+ * - Other backends: not implemented yet; returns WEBVIEW_ERROR_OK and does
+ *   nothing.
+ *
+ * @param w The webview instance.
+ * @param r Red, 0-255.
+ * @param g Green, 0-255.
+ * @param b Blue, 0-255.
+ * @param a Alpha, 0-255 (0 is fully transparent).
+ */
+WEBVIEW_API webview_error_t webview_set_background_color(webview_t w, int r,
+                                                         int g, int b, int a);
+
+/**
  * Navigates webview to the given URL. URL may be a properly encoded data URI.
  *
  * Example:

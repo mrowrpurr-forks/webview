@@ -145,6 +145,10 @@ window.__webview__.onUnbind(" +
 
   noresult set_html(const std::string &html) { return set_html_impl(html); }
 
+  noresult set_background_color(int r, int g, int b, int a) {
+    return set_background_color_impl(r, g, b, a);
+  }
+
   noresult init(const std::string &js) {
     add_user_script(js);
     return {};
@@ -165,6 +169,11 @@ protected:
                                  webview_hint_t hints) = 0;
   virtual noresult set_html_impl(const std::string &html) = 0;
   virtual noresult eval_impl(const std::string &js) = 0;
+  // Backends without a transparent-background story accept and ignore it.
+  virtual noresult set_background_color_impl(int /*r*/, int /*g*/, int /*b*/,
+                                             int /*a*/) {
+    return {};
+  }
 
   virtual user_script *add_user_script(const std::string &js) {
     return std::addressof(*m_user_scripts.emplace(m_user_scripts.end(),
