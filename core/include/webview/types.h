@@ -78,4 +78,38 @@ typedef enum {
   WEBVIEW_HINT_FIXED
 } webview_hint_t;
 
+/// What a mouse hook saw (webview_mouse_hook_install). Any button but the
+/// left, right and middle, and a horizontal wheel, never reach the hook.
+typedef enum {
+  /// The cursor moved, with or without a button held.
+  WEBVIEW_MOUSE_MOVE = 0,
+  WEBVIEW_MOUSE_LEFT_DOWN = 1,
+  WEBVIEW_MOUSE_LEFT_UP = 2,
+  WEBVIEW_MOUSE_RIGHT_DOWN = 3,
+  WEBVIEW_MOUSE_RIGHT_UP = 4,
+  WEBVIEW_MOUSE_MIDDLE_DOWN = 5,
+  WEBVIEW_MOUSE_MIDDLE_UP = 6,
+  /// The vertical wheel turned; the callback's @c wheel is the amount.
+  WEBVIEW_MOUSE_WHEEL = 7
+} webview_mouse_event_t;
+
+/**
+ * Called by the mouse hook for every mouse event on the system, before any
+ * window gets it.
+ *
+ * @param event A @c webview_mouse_event_t.
+ * @param x Cursor position on the screen, in the platform's screen units
+ *          (physical pixels on Windows, points on macOS), origin at the
+ *          top-left corner of the primary display.
+ * @param y See @p x.
+ * @param wheel For @c WEBVIEW_MOUSE_WHEEL the amount turned in notches,
+ *              positive away from the user (a trackpad gives fractions);
+ *              0 otherwise.
+ * @param arg The @c arg given to @c webview_mouse_hook_install.
+ * @return Non-zero to swallow the event, so that no window receives it; zero
+ *         to let it go on to whatever is under the cursor.
+ */
+typedef int (*webview_mouse_hook_fn_t)(int event, double x, double y,
+                                       double wheel, void *arg);
+
 #endif // WEBVIEW_TYPES_H

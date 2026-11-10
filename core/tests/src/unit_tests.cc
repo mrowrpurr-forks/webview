@@ -186,3 +186,26 @@ TEST_CASE("Ensure that narrow/wide string conversion works on Windows") {
   REQUIRE(narrow_string(std::wstring(2, L'\0')) == std::string(2, '\0'));
 }
 #endif
+
+#if defined(_WIN32) || defined(__APPLE__)
+// The hook's lifecycle: one per process, removable, and honest about its state.
+// On macOS the install itself needs the Accessibility permission, which a test
+// machine may not have granted; the test then checks only the refusal.
+TEST_CASE("Mouse hook: install once, remove once") {
+  auto fn = [](int, double, double, double, void *) -> int { return 0; };
+  REQUIRE(webview_mouse_hook_install(nullptr, nullptr) ==
+          WEBVIEW_ERROR_INVALID_ARGUMENT);
+  REQUIRE(webview_mouse_hook_remove() == WEBVIEW_ERROR_NOT_FOUND);
+  auto installed = webview_mouse_hook_install(fn, nullptr);
+  if (installed == WEBVIEW_ERROR_MISSING_DEPENDENCY) {
+    REQUIRE(webview_mouse_hook_remove() == WEBVIEW_ERROR_NOT_FOUND);
+    return;
+  }
+  REQUIRE(installed == WEBVIEW_ERROR_OK);
+  REQUIRE(webview_mouse_hook_install(fn, nullptr) == WEBVIEW_ERROR_DUPLICATE);
+  REQUIRE(webview_mouse_hook_remove() == WEBVIEW_ERROR_OK);
+  REQUIRE(webview_mouse_hook_remove() == WEBVIEW_ERROR_NOT_FOUND);
+  REQUIRE(webview_mouse_hook_install(fn, nullptr) == WEBVIEW_ERROR_OK);
+  REQUIRE(webview_mouse_hook_remove() == WEBVIEW_ERROR_OK);
+}
+#endif
