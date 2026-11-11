@@ -15,10 +15,14 @@ them; the only edit outside this folder is the pointer at the top of the root RE
 
 Where things are:
 
-- Declarations and their full documentation: `core/include/webview/api.h`, `core/include/webview/types.h`.
-- Implementation, next to upstream's: `core/include/webview/detail/` (`input_hooks.hh`, `mouse_hook.hh`,
-  `keyboard_hook.hh`, `key_codes.hh`, and the backend files).
-- Unit tests: `core/tests/src/unit_tests.cc`.
+- Declarations and their full documentation: [`api.h`](../core/include/webview/api.h),
+  [`types.h`](../core/include/webview/types.h).
+- Implementation, next to upstream's in [`detail/`](../core/include/webview/detail):
+  [`input_hooks.hh`](../core/include/webview/detail/input_hooks.hh),
+  [`mouse_hook.hh`](../core/include/webview/detail/mouse_hook.hh),
+  [`keyboard_hook.hh`](../core/include/webview/detail/keyboard_hook.hh),
+  [`key_codes.hh`](../core/include/webview/detail/key_codes.hh), and the backend files.
+- Unit tests: [`unit_tests.cc`](../core/tests/src/unit_tests.cc).
 - Build: upstream's CMake build, unchanged.
 - Bindings: [sweetview-webview-bun](https://github.com/n0t-invented-here/sweetview-webview-bun) builds
   and ships this library and wraps the hooks and the permission model in TypeScript.

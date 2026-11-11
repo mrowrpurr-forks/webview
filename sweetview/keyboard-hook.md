@@ -40,7 +40,7 @@ typedef int (*webview_keyboard_hook_fn_t)(int event, const char *code, unsigned 
 | returns     | Non-zero to swallow the event, so that no window receives it; zero to let it go on to the focused window                                                                                                                                                              |
 
 The tables from Windows scan codes and macOS keycodes to DOM codes are in
-`core/include/webview/detail/key_codes.hh`, after Chromium's `dom_code_data.inc`, and are unit-tested.
+[`key_codes.hh`](../core/include/webview/detail/key_codes.hh), after Chromium's `dom_code_data.inc`, and are unit-tested.
 
 ## Rules
 
