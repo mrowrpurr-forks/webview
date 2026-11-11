@@ -2,7 +2,10 @@
 
 > [!IMPORTANT]
 > **A fork of [webview](https://github.com/webview/webview) for the sweetview projects.**
-> The fork's additions are documented in [`sweetview/`](sweetview/). Below is upstream's README.
+>
+> The fork's additions are documented in [`sweetview/`](sweetview/).
+>
+> Below is upstream's README.
 
 ---
 
