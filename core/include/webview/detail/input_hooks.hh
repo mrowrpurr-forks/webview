@@ -36,7 +36,7 @@
 //   granted, how to ask for it, and whether a failing install asks by
 //   itself. On macOS the hooks' event tap filters input, which takes Device
 //   Control and Data Access (System Settings > Privacy & Security); Input
-//   Monitoring, which only lets a process watch input, is modelled so an app
+//   Monitoring, which only lets a process watch input, is modeled so an app
 //   can ask about it, but no feature of the library needs it. Windows and
 //   Linux have no such permissions.
 // - Reading the modifier keys into webview_modifier_t bits.

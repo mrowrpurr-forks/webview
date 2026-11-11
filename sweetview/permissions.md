@@ -27,7 +27,7 @@ if (needed & WEBVIEW_PERMISSION_DEVICE_CONTROL &&
 
 | Type                   | Values                                                                                                                                                                          |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `webview_permission_t` | `WEBVIEW_PERMISSION_DEVICE_CONTROL` (macOS "Device Control and Data Access": filter and post input events), `WEBVIEW_PERMISSION_INPUT_MONITORING` (macOS "Input Monitoring": watch without filtering; no feature here needs it, it is modelled so an app can ask about it the same way) |
+| `webview_permission_t` | `WEBVIEW_PERMISSION_DEVICE_CONTROL` (macOS "Device Control and Data Access": filter and post input events), `WEBVIEW_PERMISSION_INPUT_MONITORING` (macOS "Input Monitoring": watch without filtering; no feature here needs it, it is modeled so an app can ask about it the same way) |
 | `webview_feature_t`    | `WEBVIEW_FEATURE_MOUSE_HOOK`, `WEBVIEW_FEATURE_KEYBOARD_HOOK`                                                                                                                   |
 
 ## Calls

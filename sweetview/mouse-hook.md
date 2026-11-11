@@ -48,7 +48,7 @@ typedef int (*webview_mouse_hook_fn_t)(int event, double x, double y, double whe
 
 ## Per platform
 
-| Platform | Behaviour                                                                                                                                                                                                                                                                      |
+| Platform | Behavior                                                                                                                                                                                                                                                                      |
 | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Windows  | A low-level mouse hook (`WH_MOUSE_LL`) on the calling thread, which must pump messages; `webview_run` does                                                                                                                                                                     |
 | macOS    | A `CGEventTap` at the session level on the main run loop, shared with the keyboard hook. The process needs **Device Control and Data Access**; see [Permissions](permissions.md). A tap the system disables for being slow is re-enabled by the library                       |

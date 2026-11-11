@@ -61,7 +61,7 @@ struct state_t {
   void *arg{};
   /// Which keys (by the platform's raw code) the hook has seen go down and
   /// not yet up: on Windows a second down of a held key is the OS's
-  /// auto-repeat; on macOS it tells a synthesised modifier's flags-changed
+  /// auto-repeat; on macOS it tells a synthesized modifier's flags-changed
   /// down from its up.
   std::bitset<256> down{};
 #if defined(WEBVIEW_PLATFORM_WINDOWS)
@@ -141,7 +141,7 @@ inline CGEventRef on_event(CGEventType type, CGEventRef event) {
     // A modifier key's press and release both arrive as flags-changed. The
     // hardware sets a bit per side, which says whether this side is down
     // whatever the other side does. An event without side bits is
-    // synthesised (CGEventPost with flags set by hand): its flag clear is
+    // synthesized (CGEventPost with flags set by hand): its flag clear is
     // the up, and its flag set is the down unless the hook saw this key go
     // down already. Caps Lock's flag is the lock state, so its down turns
     // the lock on and its up turns it off. A flags-changed for a key that
