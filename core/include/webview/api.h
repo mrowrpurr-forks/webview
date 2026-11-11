@@ -206,7 +206,8 @@ WEBVIEW_API webview_error_t webview_set_asset(webview_t w, const char *path,
  * system before any window does, and decides per event whether it goes on or
  * is swallowed. This is how a click-through overlay window gets some of the
  * buttons over what it draws without ever taking the others: pass every
- * event through except, say, right and middle presses over a drawn thing.
+ * event through except, for example, right and middle presses over something
+ * it draws.
  * One hook per process; it belongs to no webview instance.
  *
  * Call it on the UI thread before @c webview_run: @p fn runs on that thread
@@ -296,7 +297,7 @@ WEBVIEW_API webview_error_t webview_keyboard_hook_remove(void);
  * @c webview_permission_t bits; 0 when it needs none. On macOS both hooks
  * need @c WEBVIEW_PERMISSION_DEVICE_CONTROL; on Windows and Linux nothing
  * needs anything. Ask this first, then @c webview_permission_status for
- * each bit, and the app knows what it is in for before it installs.
+ * each bit, and the app knows what it needs before it installs.
  *
  * @param feature A @c webview_feature_t.
  */
@@ -335,7 +336,7 @@ WEBVIEW_API webview_error_t webview_permission_request(unsigned permission);
  * for it by itself (once per process, as @c webview_permission_request
  * would). On by default, so an app that never asks about permissions still
  * gets the system's dialog the first time it installs a hook. Turn it off
- * to ask in your own time, for example after explaining why, or only once
+ * to ask only through webview_permission_request, for example after explaining why, or only once
  * per user rather than per launch.
  *
  * @param on Non-zero to ask on a failed install, zero not to.

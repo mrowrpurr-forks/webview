@@ -9,7 +9,7 @@ A system-wide mouse hook. `fn` sees every mouse event on the system before any w
 decides per event whether it goes on or is swallowed.
 
 This is how a click-through overlay gets some of the buttons over what it draws without ever taking
-the others: pass every event through except, say, right and middle presses over a drawn thing.
+the others: pass every event through except, for example, right and middle presses over something it draws.
 
 ```c
 static int on_mouse(int event, double x, double y, double wheel, unsigned modifiers, void *arg) {
