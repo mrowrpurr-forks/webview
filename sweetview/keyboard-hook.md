@@ -5,9 +5,10 @@ webview_error_t webview_keyboard_hook_install(webview_keyboard_hook_fn_t fn, voi
 webview_error_t webview_keyboard_hook_remove(void);
 ```
 
-A system-wide keyboard hook: `fn` sees every key event on the system (down, up, and the OS's
+A system-wide keyboard hook. `fn` sees every key event on the system (down, up, and the OS's
 auto-repeat) before the focused window does, and decides per event whether it goes on or is swallowed.
-A swallowed key reaches no window at all, so a callback takes only the keys it owns, by its own state
+
+A swallowed key reaches no window at all. So a callback takes only the keys it owns, by its own state
 (for example while something of its own is selected), and passes the rest.
 
 ```c

@@ -5,10 +5,11 @@ webview_error_t webview_mouse_hook_install(webview_mouse_hook_fn_t fn, void *arg
 webview_error_t webview_mouse_hook_remove(void);
 ```
 
-A system-wide mouse hook: `fn` sees every mouse event on the system before any window does, and
-decides per event whether it goes on or is swallowed. This is how a click-through overlay gets some of
-the buttons over what it draws without ever taking the others: pass every event through except, say,
-right and middle presses over a drawn thing.
+A system-wide mouse hook. `fn` sees every mouse event on the system before any window does, and
+decides per event whether it goes on or is swallowed.
+
+This is how a click-through overlay gets some of the buttons over what it draws without ever taking
+the others: pass every event through except, say, right and middle presses over a drawn thing.
 
 ```c
 static int on_mouse(int event, double x, double y, double wheel, unsigned modifiers, void *arg) {
