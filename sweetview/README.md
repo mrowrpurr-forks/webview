@@ -1,9 +1,8 @@
 # sweetview-webview
 
-A fork of [webview](https://github.com/webview/webview) for the sweetview projects. Upstream is
-pulled in regularly and nothing here is meant to go back, so everything the fork adds is documented
-in this folder, one page per addition, and upstream's own files are left as they are (the only edit
-outside this folder is the pointer at the top of the root README).
+A fork of [webview](https://github.com/webview/webview) for the sweetview projects. What the fork adds
+is documented here, one page per addition. Upstream's files are as upstream has them; the only edit
+outside this folder is the pointer at the top of the root README.
 
 | Addition                                                                            | C API                                                                                                                                                           |
 | ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
