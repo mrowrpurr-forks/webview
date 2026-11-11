@@ -25,4 +25,4 @@ Where things are:
 - Unit tests: [`unit_tests.cc`](../core/tests/src/unit_tests.cc).
 - Build: upstream's CMake build, unchanged.
 - Bindings: [sweetview-webview-bun](https://github.com/n0t-invented-here/sweetview-webview-bun) builds
-  and ships this library and wraps the hooks and the permission model in TypeScript.
+  and ships this library and wraps all five additions in TypeScript.
