@@ -29,6 +29,7 @@
 #if defined(__cplusplus) && !defined(WEBVIEW_HEADER)
 
 #include "backends.hh"
+#include "detail/keyboard_hook.hh"
 #include "detail/mouse_hook.hh"
 #include "errors.h"
 #include "errors.hh"
@@ -218,6 +219,20 @@ WEBVIEW_API webview_error_t webview_mouse_hook_install(webview_mouse_hook_fn_t f
 WEBVIEW_API webview_error_t webview_mouse_hook_remove(void) {
   using namespace webview::detail;
   return api_filter([] { return mouse_hook::remove(); });
+}
+
+WEBVIEW_API webview_error_t
+webview_keyboard_hook_install(webview_keyboard_hook_fn_t fn, void *arg) {
+  using namespace webview::detail;
+  if (!fn) {
+    return WEBVIEW_ERROR_INVALID_ARGUMENT;
+  }
+  return api_filter([=] { return keyboard_hook::install(fn, arg); });
+}
+
+WEBVIEW_API webview_error_t webview_keyboard_hook_remove(void) {
+  using namespace webview::detail;
+  return api_filter([] { return keyboard_hook::remove(); });
 }
 
 WEBVIEW_API webview_error_t webview_navigate(webview_t w, const char *url) {

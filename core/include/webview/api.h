@@ -213,32 +213,81 @@ WEBVIEW_API webview_error_t webview_set_asset(webview_t w, const char *path,
  * from inside the run loop, and must return quickly (the OS removes a hook
  * that stalls).
  *
+ * Every event carries the modifier keys held (@c webview_modifier_t bits),
+ * read inside the hook for that event.
+ *
  * Remarks:
  * - Windows: a low-level mouse hook (WH_MOUSE_LL) on the calling thread,
  *   which must pump messages; webview_run does.
- * - macOS: a CGEventTap at the session level on the main run loop. The
- *   process needs the Accessibility permission (System Settings, Privacy &
- *   Security, Accessibility); without it this fails with
- *   @c WEBVIEW_ERROR_MISSING_DEPENDENCY after asking the system to show its
- *   prompt once, and the caller falls back to whatever else it has (for
- *   example hit regions). A tap the system disables for being slow is
- *   re-enabled by the library.
+ * - macOS: a CGEventTap at the session level on the main run loop, shared
+ *   with the keyboard hook. The process needs the Accessibility permission
+ *   (System Settings, Privacy & Security, Accessibility); without it this
+ *   fails with @c WEBVIEW_ERROR_MISSING_DEPENDENCY after asking the system
+ *   to show its prompt once, and the caller falls back to whatever else it
+ *   has (for example hit regions). A tap the system disables for being slow
+ *   is re-enabled by the library.
  * - Linux: not supported; fails with @c WEBVIEW_ERROR_UNSPECIFIED.
  *
  * @param fn The callback.
  * @param arg Passed to @p fn as its last argument.
- * @retval WEBVIEW_ERROR_DUPLICATE A hook is already installed.
+ * @retval WEBVIEW_ERROR_DUPLICATE A mouse hook is already installed.
  * @retval WEBVIEW_ERROR_MISSING_DEPENDENCY macOS: no Accessibility permission.
  */
 WEBVIEW_API webview_error_t webview_mouse_hook_install(webview_mouse_hook_fn_t fn,
                                                        void *arg);
 
 /**
- * Removes the mouse hook installed by @c webview_mouse_hook_install.
+ * Removes the mouse hook installed by @c webview_mouse_hook_install. The
+ * keyboard hook, if installed, keeps running.
  *
- * @retval WEBVIEW_ERROR_NOT_FOUND No hook is installed.
+ * @retval WEBVIEW_ERROR_NOT_FOUND No mouse hook is installed.
  */
 WEBVIEW_API webview_error_t webview_mouse_hook_remove(void);
+
+/**
+ * Installs a system-wide keyboard hook: @p fn sees every key event on the
+ * system (down, up, and the OS's auto-repeat) before the focused window
+ * does, and decides per event whether it goes on or is swallowed. A
+ * swallowed key reaches no window at all, so a callback takes only the keys
+ * it owns, by its own state (for example while something of its own is
+ * selected), and passes the rest. One hook per process; it belongs to no
+ * webview instance, and is independent of the mouse hook: install both in
+ * either order, remove either, and the other keeps running.
+ *
+ * Each event names the physical key as the DOM's KeyboardEvent.code does
+ * ("KeyZ", "Delete", "ArrowLeft"...), gives the platform's own code for it,
+ * and carries the modifier keys held (@c webview_modifier_t bits).
+ *
+ * Call it on the UI thread before @c webview_run: @p fn runs on that thread
+ * from inside the run loop, and must return quickly (the OS removes a hook
+ * that stalls).
+ *
+ * Remarks:
+ * - Windows: a low-level keyboard hook (WH_KEYBOARD_LL) on the calling
+ *   thread, which must pump messages; webview_run does.
+ * - macOS: key-down, key-up and flags-changed events on the CGEventTap the
+ *   mouse hook uses (one tap, one Accessibility prompt, one run-loop
+ *   source). A modifier key's press and release arrive as flags-changed and
+ *   are reported as its down and up. Caps Lock reports a down when it turns
+ *   the lock on and an up when it turns it off, which is how the key's
+ *   events arrive.
+ * - Linux: not supported; fails with @c WEBVIEW_ERROR_UNSPECIFIED.
+ *
+ * @param fn The callback.
+ * @param arg Passed to @p fn as its last argument.
+ * @retval WEBVIEW_ERROR_DUPLICATE A keyboard hook is already installed.
+ * @retval WEBVIEW_ERROR_MISSING_DEPENDENCY macOS: no Accessibility permission.
+ */
+WEBVIEW_API webview_error_t
+webview_keyboard_hook_install(webview_keyboard_hook_fn_t fn, void *arg);
+
+/**
+ * Removes the keyboard hook installed by @c webview_keyboard_hook_install.
+ * The mouse hook, if installed, keeps running.
+ *
+ * @retval WEBVIEW_ERROR_NOT_FOUND No keyboard hook is installed.
+ */
+WEBVIEW_API webview_error_t webview_keyboard_hook_remove(void);
 
 /**
  * Navigates webview to the given URL. URL may be a properly encoded data URI.

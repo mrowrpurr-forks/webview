@@ -187,12 +187,54 @@ TEST_CASE("Ensure that narrow/wide string conversion works on Windows") {
 }
 #endif
 
+// The key tables behind the keyboard hook's DOM codes, on every platform.
+TEST_CASE("Key codes: Windows scan codes to DOM codes") {
+  using webview::detail::key_codes::dom_code_from_windows_scan;
+  REQUIRE(std::string(dom_code_from_windows_scan(0x001E)) == "KeyA");
+  REQUIRE(std::string(dom_code_from_windows_scan(0x002C)) == "KeyZ");
+  REQUIRE(std::string(dom_code_from_windows_scan(0x0002)) == "Digit1");
+  REQUIRE(std::string(dom_code_from_windows_scan(0x001C)) == "Enter");
+  REQUIRE(std::string(dom_code_from_windows_scan(0xE01C)) == "NumpadEnter");
+  REQUIRE(std::string(dom_code_from_windows_scan(0x001D)) == "ControlLeft");
+  REQUIRE(std::string(dom_code_from_windows_scan(0xE01D)) == "ControlRight");
+  REQUIRE(std::string(dom_code_from_windows_scan(0x0045)) == "Pause");
+  REQUIRE(std::string(dom_code_from_windows_scan(0xE045)) == "NumLock");
+  REQUIRE(std::string(dom_code_from_windows_scan(0x0053)) == "NumpadDecimal");
+  REQUIRE(std::string(dom_code_from_windows_scan(0xE053)) == "Delete");
+  REQUIRE(std::string(dom_code_from_windows_scan(0xE04B)) == "ArrowLeft");
+  REQUIRE(std::string(dom_code_from_windows_scan(0xE05B)) == "MetaLeft");
+  REQUIRE(std::string(dom_code_from_windows_scan(0x0058)) == "F12");
+  REQUIRE(std::string(dom_code_from_windows_scan(0x0076)) == "F24");
+  REQUIRE(std::string(dom_code_from_windows_scan(0x00FF)) == "Unidentified");
+  REQUIRE(std::string(dom_code_from_windows_scan(0xE0FF)) == "Unidentified");
+}
+
+TEST_CASE("Key codes: macOS keycodes to DOM codes") {
+  using webview::detail::key_codes::dom_code_from_mac_keycode;
+  REQUIRE(std::string(dom_code_from_mac_keycode(0x00)) == "KeyA");
+  REQUIRE(std::string(dom_code_from_mac_keycode(0x06)) == "KeyZ");
+  REQUIRE(std::string(dom_code_from_mac_keycode(0x12)) == "Digit1");
+  REQUIRE(std::string(dom_code_from_mac_keycode(0x24)) == "Enter");
+  REQUIRE(std::string(dom_code_from_mac_keycode(0x4C)) == "NumpadEnter");
+  REQUIRE(std::string(dom_code_from_mac_keycode(0x33)) == "Backspace");
+  REQUIRE(std::string(dom_code_from_mac_keycode(0x75)) == "Delete");
+  REQUIRE(std::string(dom_code_from_mac_keycode(0x35)) == "Escape");
+  REQUIRE(std::string(dom_code_from_mac_keycode(0x37)) == "MetaLeft");
+  REQUIRE(std::string(dom_code_from_mac_keycode(0x3A)) == "AltLeft");
+  REQUIRE(std::string(dom_code_from_mac_keycode(0x7B)) == "ArrowLeft");
+  REQUIRE(std::string(dom_code_from_mac_keycode(0x7A)) == "F1");
+  REQUIRE(std::string(dom_code_from_mac_keycode(0x7F)) == "Unidentified");
+}
+
 #if defined(_WIN32) || defined(__APPLE__)
-// The hook's lifecycle: one per process, removable, and honest about its state.
-// On macOS the install itself needs the Accessibility permission, which a test
-// machine may not have granted; the test then checks only the refusal.
+// The hooks' lifecycle: one of each per process, removable, independent of
+// each other, and honest about their state. On macOS the install itself needs
+// the Accessibility permission, which a test machine may not have granted;
+// the tests then check only the refusal.
 TEST_CASE("Mouse hook: install once, remove once") {
-  auto fn = [](int, double, double, double, void *) -> int { return 0; };
+  auto fn = [](int, double, double, double, unsigned, void *) -> int {
+    return 0;
+  };
   REQUIRE(webview_mouse_hook_install(nullptr, nullptr) ==
           WEBVIEW_ERROR_INVALID_ARGUMENT);
   REQUIRE(webview_mouse_hook_remove() == WEBVIEW_ERROR_NOT_FOUND);
@@ -207,5 +249,52 @@ TEST_CASE("Mouse hook: install once, remove once") {
   REQUIRE(webview_mouse_hook_remove() == WEBVIEW_ERROR_NOT_FOUND);
   REQUIRE(webview_mouse_hook_install(fn, nullptr) == WEBVIEW_ERROR_OK);
   REQUIRE(webview_mouse_hook_remove() == WEBVIEW_ERROR_OK);
+}
+
+TEST_CASE("Keyboard hook: install once, remove once") {
+  auto fn = [](int, const char *, unsigned, unsigned, void *) -> int {
+    return 0;
+  };
+  REQUIRE(webview_keyboard_hook_install(nullptr, nullptr) ==
+          WEBVIEW_ERROR_INVALID_ARGUMENT);
+  REQUIRE(webview_keyboard_hook_remove() == WEBVIEW_ERROR_NOT_FOUND);
+  auto installed = webview_keyboard_hook_install(fn, nullptr);
+  if (installed == WEBVIEW_ERROR_MISSING_DEPENDENCY) {
+    REQUIRE(webview_keyboard_hook_remove() == WEBVIEW_ERROR_NOT_FOUND);
+    return;
+  }
+  REQUIRE(installed == WEBVIEW_ERROR_OK);
+  REQUIRE(webview_keyboard_hook_install(fn, nullptr) ==
+          WEBVIEW_ERROR_DUPLICATE);
+  REQUIRE(webview_keyboard_hook_remove() == WEBVIEW_ERROR_OK);
+  REQUIRE(webview_keyboard_hook_remove() == WEBVIEW_ERROR_NOT_FOUND);
+  REQUIRE(webview_keyboard_hook_install(fn, nullptr) == WEBVIEW_ERROR_OK);
+  REQUIRE(webview_keyboard_hook_remove() == WEBVIEW_ERROR_OK);
+}
+
+TEST_CASE("Mouse and keyboard hooks: either order, either removed first") {
+  auto mouse = [](int, double, double, double, unsigned, void *) -> int {
+    return 0;
+  };
+  auto keys = [](int, const char *, unsigned, unsigned, void *) -> int {
+    return 0;
+  };
+  auto first = webview_mouse_hook_install(mouse, nullptr);
+  if (first == WEBVIEW_ERROR_MISSING_DEPENDENCY) {
+    return;
+  }
+  REQUIRE(first == WEBVIEW_ERROR_OK);
+  REQUIRE(webview_keyboard_hook_install(keys, nullptr) == WEBVIEW_ERROR_OK);
+  // Removing the mouse hook leaves the keyboard hook installed.
+  REQUIRE(webview_mouse_hook_remove() == WEBVIEW_ERROR_OK);
+  REQUIRE(webview_keyboard_hook_install(keys, nullptr) ==
+          WEBVIEW_ERROR_DUPLICATE);
+  // And the other way round, keyboard first.
+  REQUIRE(webview_mouse_hook_install(mouse, nullptr) == WEBVIEW_ERROR_OK);
+  REQUIRE(webview_keyboard_hook_remove() == WEBVIEW_ERROR_OK);
+  REQUIRE(webview_mouse_hook_install(mouse, nullptr) ==
+          WEBVIEW_ERROR_DUPLICATE);
+  REQUIRE(webview_mouse_hook_remove() == WEBVIEW_ERROR_OK);
+  REQUIRE(webview_keyboard_hook_remove() == WEBVIEW_ERROR_NOT_FOUND);
 }
 #endif

@@ -29,16 +29,18 @@
 #if defined(__cplusplus) && !defined(WEBVIEW_HEADER)
 
 // The system-wide mouse hook behind webview_mouse_hook_install: one per
-// process, on the UI thread's run loop, handing every mouse event to the
-// caller's function and dropping the ones it says to swallow. Windows: a
-// WH_MOUSE_LL hook. macOS: a CGEventTap at the session level, which needs the
-// Accessibility permission. Linux: not supported.
+// process, on the UI thread's run loop, handing every mouse event with the
+// modifier keys held to the caller's function and dropping the ones it says
+// to swallow. Windows: a WH_MOUSE_LL hook. macOS: a listener on the
+// CGEventTap in input_hooks.hh, which needs the Accessibility permission.
+// Linux: not supported.
 
 #include "../errors.h"
 #include "../errors.hh"
 #include "../macros.h"
 #include "../types.h"
 #include "../types.hh"
+#include "input_hooks.hh"
 
 #if defined(WEBVIEW_PLATFORM_DARWIN)
 #include <ApplicationServices/ApplicationServices.h>
@@ -53,10 +55,7 @@ namespace mouse_hook {
 struct state_t {
   webview_mouse_hook_fn_t fn{};
   void *arg{};
-#if defined(WEBVIEW_PLATFORM_DARWIN)
-  CFMachPortRef tap{};
-  CFRunLoopSourceRef source{};
-#elif defined(WEBVIEW_PLATFORM_WINDOWS)
+#if defined(WEBVIEW_PLATFORM_WINDOWS)
   HHOOK hook{};
 #endif
 };
@@ -68,18 +67,8 @@ inline state_t &state() {
 
 #if defined(WEBVIEW_PLATFORM_DARWIN)
 
-inline CGEventRef tap_callback(CGEventTapProxy /*proxy*/, CGEventType type,
-                               CGEventRef event, void *refcon) {
-  auto &s = *static_cast<state_t *>(refcon);
-  // The system turns a tap off when its callback was too slow or on user
-  // input it judged urgent; turn it back on, or the hook is silently dead.
-  if (type == kCGEventTapDisabledByTimeout ||
-      type == kCGEventTapDisabledByUserInput) {
-    if (s.tap) {
-      CGEventTapEnable(s.tap, true);
-    }
-    return event;
-  }
+inline CGEventRef on_event(CGEventType type, CGEventRef event) {
+  auto &s = state();
   if (!s.fn) {
     return event;
   }
@@ -127,7 +116,10 @@ inline CGEventRef tap_callback(CGEventTapProxy /*proxy*/, CGEventType type,
   // Global display coordinates: points, origin at the top-left of the main
   // display, which is the convention the library's callers use.
   CGPoint at = CGEventGetLocation(event);
-  return s.fn(kind, at.x, at.y, wheel, s.arg) ? nullptr : event;
+  // The event's own flags: the modifiers as they were for this exact event.
+  unsigned modifiers =
+      input_hooks::modifiers_from_flags(CGEventGetFlags(event));
+  return s.fn(kind, at.x, at.y, wheel, modifiers, s.arg) ? nullptr : event;
 }
 
 inline noresult install(webview_mouse_hook_fn_t fn, void *arg) {
@@ -150,31 +142,12 @@ inline noresult install(webview_mouse_hook_fn_t fn, void *arg) {
       CGEventMaskBit(kCGEventScrollWheel);
   s.fn = fn;
   s.arg = arg;
-  // A default (not listen-only) tap can drop events; that takes the
-  // Accessibility permission, and without it the tap is not created.
-  s.tap = CGEventTapCreate(kCGSessionEventTap, kCGHeadInsertEventTap,
-                           kCGEventTapOptionDefault, mask, tap_callback, &s);
-  if (!s.tap) {
+  auto added = input_hooks::event_tap::add(input_hooks::event_tap::mouse,
+                                           mask, on_event);
+  if (!added.ok()) {
     s = state_t{};
-    // Ask the system to show its permission prompt (once per process); the
-    // caller retries on a later launch, after the user granted it.
-    const void *keys[] = {kAXTrustedCheckOptionPrompt};
-    const void *values[] = {kCFBooleanTrue};
-    CFDictionaryRef options = CFDictionaryCreate(
-        kCFAllocatorDefault, keys, values, 1, &kCFTypeDictionaryKeyCallBacks,
-        &kCFTypeDictionaryValueCallBacks);
-    AXIsProcessTrustedWithOptions(options);
-    CFRelease(options);
-    return error_info{WEBVIEW_ERROR_MISSING_DEPENDENCY,
-                      "CGEventTapCreate failed: the process needs the "
-                      "Accessibility permission (System Settings > Privacy & "
-                      "Security > Accessibility)"};
   }
-  s.source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, s.tap, 0);
-  // The main run loop is the one webview_run spins.
-  CFRunLoopAddSource(CFRunLoopGetMain(), s.source, kCFRunLoopCommonModes);
-  CGEventTapEnable(s.tap, true);
-  return {};
+  return added;
 }
 
 inline noresult remove() {
@@ -182,11 +155,7 @@ inline noresult remove() {
   if (!s.fn) {
     return error_info{WEBVIEW_ERROR_NOT_FOUND, "No mouse hook is installed"};
   }
-  CGEventTapEnable(s.tap, false);
-  CFRunLoopRemoveSource(CFRunLoopGetMain(), s.source, kCFRunLoopCommonModes);
-  CFMachPortInvalidate(s.tap);
-  CFRelease(s.source);
-  CFRelease(s.tap);
+  input_hooks::event_tap::remove(input_hooks::event_tap::mouse);
   s = state_t{};
   return {};
 }
@@ -231,8 +200,11 @@ inline LRESULT CALLBACK hook_proc(int code, WPARAM wparam, LPARAM lparam) {
     default:
       break; // X buttons, the horizontal wheel: not the hook's business
     }
-    if (kind >= 0 && s.fn(kind, static_cast<double>(m->pt.x),
-                          static_cast<double>(m->pt.y), wheel, s.arg)) {
+    // The low-level message has no modifier field; the asynchronous key
+    // state inside the hook is the keyboard as it was for this event.
+    if (kind >= 0 &&
+        s.fn(kind, static_cast<double>(m->pt.x), static_cast<double>(m->pt.y),
+             wheel, input_hooks::modifiers_now(), s.arg)) {
       return 1;
     }
   }

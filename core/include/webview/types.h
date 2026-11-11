@@ -78,6 +78,19 @@ typedef enum {
   WEBVIEW_HINT_FIXED
 } webview_hint_t;
 
+/// The modifier keys held when an input hook saw an event, as bits of the
+/// @c modifiers argument of @c webview_mouse_hook_fn_t and
+/// @c webview_keyboard_hook_fn_t. The same four the DOM's KeyboardEvent
+/// reports (shiftKey, ctrlKey, altKey, metaKey); lock keys are not modifiers.
+typedef enum {
+  WEBVIEW_MODIFIER_SHIFT = 1 << 0,
+  WEBVIEW_MODIFIER_CONTROL = 1 << 1,
+  /// Alt on Windows and Linux, Option on macOS.
+  WEBVIEW_MODIFIER_ALT = 1 << 2,
+  /// The Windows key on Windows, Command on macOS.
+  WEBVIEW_MODIFIER_META = 1 << 3
+} webview_modifier_t;
+
 /// What a mouse hook saw (webview_mouse_hook_install). Any button but the
 /// left, right and middle, and a horizontal wheel, never reach the hook.
 typedef enum {
@@ -105,11 +118,49 @@ typedef enum {
  * @param wheel For @c WEBVIEW_MOUSE_WHEEL the amount turned in notches,
  *              positive away from the user (a trackpad gives fractions);
  *              0 otherwise.
+ * @param modifiers The modifier keys held when the event was generated, as
+ *                  @c webview_modifier_t bits: on Windows the asynchronous key
+ *                  state inside the hook, on macOS the event's own flags.
  * @param arg The @c arg given to @c webview_mouse_hook_install.
  * @return Non-zero to swallow the event, so that no window receives it; zero
  *         to let it go on to whatever is under the cursor.
  */
 typedef int (*webview_mouse_hook_fn_t)(int event, double x, double y,
-                                       double wheel, void *arg);
+                                       double wheel, unsigned modifiers,
+                                       void *arg);
+
+/// What a keyboard hook saw (webview_keyboard_hook_install).
+typedef enum {
+  /// A key went down that was up.
+  WEBVIEW_KEY_DOWN = 0,
+  /// A key went up.
+  WEBVIEW_KEY_UP = 1,
+  /// A key that is held sent another down (the OS's auto-repeat).
+  WEBVIEW_KEY_REPEAT = 2
+} webview_key_event_t;
+
+/**
+ * Called by the keyboard hook for every key event on the system, before any
+ * window gets it.
+ *
+ * @param event A @c webview_key_event_t.
+ * @param code The physical key as the DOM's KeyboardEvent.code names it
+ *             ("KeyA", "Digit1", "Enter", "ArrowLeft", "ShiftLeft",
+ *             "Numpad7", "F5"...), so a caller never switches on a platform's
+ *             key numbers; "Unidentified" for a key the library has no name
+ *             for (@p raw still says which). Valid for the duration of the
+ *             call only.
+ * @param raw The platform's own code for the key: the virtual-key code on
+ *            Windows (VK_*), the virtual keycode on macOS (kVK_*).
+ * @param modifiers The modifier keys held after this event, as
+ *                  @c webview_modifier_t bits, so a modifier's own down has
+ *                  its bit set and its up has it clear (the DOM's convention).
+ * @param arg The @c arg given to @c webview_keyboard_hook_install.
+ * @return Non-zero to swallow the event, so that no window receives it; zero
+ *         to let it go on to the focused window.
+ */
+typedef int (*webview_keyboard_hook_fn_t)(int event, const char *code,
+                                          unsigned raw, unsigned modifiers,
+                                          void *arg);
 
 #endif // WEBVIEW_TYPES_H
