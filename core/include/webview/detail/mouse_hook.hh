@@ -32,8 +32,8 @@
 // process, on the UI thread's run loop, handing every mouse event with the
 // modifier keys held to the caller's function and dropping the ones it says
 // to swallow. Windows: a WH_MOUSE_LL hook. macOS: a listener on the
-// CGEventTap in input_hooks.hh, which needs the Accessibility permission.
-// Linux: not supported.
+// CGEventTap in input_hooks.hh, which needs the permission the model there
+// names (webview_feature_permissions). Linux: not supported.
 
 #include "../errors.h"
 #include "../errors.hh"

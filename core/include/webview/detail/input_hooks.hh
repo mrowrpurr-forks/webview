@@ -29,10 +29,19 @@
 #if defined(__cplusplus) && !defined(WEBVIEW_HEADER)
 
 // What the mouse hook (mouse_hook.hh) and the keyboard hook
-// (keyboard_hook.hh) share: reading the modifier keys into
-// webview_modifier_t bits, and on macOS the one CGEventTap both hooks listen
-// through, so the process asks for the Accessibility permission once and
-// adds one source to the run loop.
+// (keyboard_hook.hh) share:
+//
+// - The permission model (webview_permission_t, webview_feature_t): which
+//   system permission each feature needs on this platform, whether it is
+//   granted, how to ask for it, and whether a failing install asks by
+//   itself. On macOS the hooks' event tap filters input, which takes Device
+//   Control and Data Access (System Settings > Privacy & Security); Input
+//   Monitoring, which only lets a process watch input, is modelled so an app
+//   can ask about it, but no feature of the library needs it. Windows and
+//   Linux have no such permissions.
+// - Reading the modifier keys into webview_modifier_t bits.
+// - On macOS, the one CGEventTap both hooks listen through, so the
+//   permission is asked for once and one source is added to the run loop.
 
 #include "../errors.h"
 #include "../errors.hh"
@@ -49,6 +58,112 @@
 namespace webview {
 namespace detail {
 namespace input_hooks {
+
+// ---- The permission model ---------------------------------------------------
+
+/// Whether a failed install asks the system for the permission it needs by
+/// itself (webview_permission_set_auto_request); on by default, so a caller
+/// that never asks about permissions still gets the system's prompt the
+/// first time it installs a hook.
+inline bool &auto_request() {
+  static bool on = true;
+  return on;
+}
+
+inline noresult set_auto_request(bool on) {
+  auto_request() = on;
+  return {};
+}
+
+inline bool is_known_permission(unsigned permission) {
+  return permission == WEBVIEW_PERMISSION_DEVICE_CONTROL ||
+         permission == WEBVIEW_PERMISSION_INPUT_MONITORING;
+}
+
+/// The permissions a feature needs on this platform, as webview_permission_t
+/// bits. The same on every platform as a function; the answer differs.
+inline unsigned feature_permissions(int feature) {
+  switch (feature) {
+  case WEBVIEW_FEATURE_MOUSE_HOOK:
+  case WEBVIEW_FEATURE_KEYBOARD_HOOK:
+#if defined(WEBVIEW_PLATFORM_DARWIN)
+    // The hooks' tap filters events (kCGEventTapOptionDefault), which takes
+    // post-event access, the Device Control and Data Access row.
+    return WEBVIEW_PERMISSION_DEVICE_CONTROL;
+#else
+    return 0;
+#endif
+  default:
+    return 0;
+  }
+}
+
+#if defined(WEBVIEW_PLATFORM_DARWIN)
+
+inline const char *permission_name(unsigned permission) {
+  return permission == WEBVIEW_PERMISSION_DEVICE_CONTROL
+             ? "Device Control and Data Access"
+             : "Input Monitoring";
+}
+
+inline error_info permission_missing(unsigned permission) {
+  return error_info{WEBVIEW_ERROR_MISSING_DEPENDENCY,
+                    std::string("The process needs the ") +
+                        permission_name(permission) +
+                        " permission (System Settings > Privacy & "
+                        "Security); the user grants it there"};
+}
+
+/// Whether the process holds a permission, without asking for it.
+inline noresult permission_status(unsigned permission) {
+  if (!is_known_permission(permission)) {
+    return error_info{WEBVIEW_ERROR_INVALID_ARGUMENT, "Unknown permission"};
+  }
+  bool granted = permission == WEBVIEW_PERMISSION_DEVICE_CONTROL
+                     ? CGPreflightPostEventAccess()
+                     : CGPreflightListenEventAccess();
+  if (granted) {
+    return {};
+  }
+  return permission_missing(permission);
+}
+
+/// Asks the system for a permission: it adds the app to the row in System
+/// Settings and shows its dialog each time this is called while the
+/// permission is missing. The user grants it there; an install after that
+/// succeeds.
+inline noresult permission_request(unsigned permission) {
+  if (!is_known_permission(permission)) {
+    return error_info{WEBVIEW_ERROR_INVALID_ARGUMENT, "Unknown permission"};
+  }
+  bool granted = permission == WEBVIEW_PERMISSION_DEVICE_CONTROL
+                     ? CGRequestPostEventAccess()
+                     : CGRequestListenEventAccess();
+  if (granted) {
+    return {};
+  }
+  return permission_missing(permission);
+}
+
+#else
+
+/// No system permissions on this platform: every known permission is not
+/// applicable, which the API reports as WEBVIEW_ERROR_UNSPECIFIED.
+inline noresult permission_status(unsigned permission) {
+  if (!is_known_permission(permission)) {
+    return error_info{WEBVIEW_ERROR_INVALID_ARGUMENT, "Unknown permission"};
+  }
+  return error_info{WEBVIEW_ERROR_UNSPECIFIED,
+                    "This platform has no such permission"};
+}
+
+inline noresult permission_request(unsigned permission) {
+  return permission_status(permission);
+}
+
+#endif
+
+// ---- Modifier keys --------------------------------------------------------
 
 #if defined(WEBVIEW_PLATFORM_WINDOWS)
 
@@ -131,13 +246,14 @@ inline unsigned modifiers_from_flags(CGEventFlags flags) {
   return m;
 }
 
-// The one event tap. Each hook is a listener: the event types it wants and
-// a function that gets each matching event and returns it to pass it on or
-// nullptr to swallow it. The tap is created when the first listener arrives
-// with the union of the listeners' masks, replaced when the set changes (a
-// tap's mask is fixed at creation; the replacement is created before the old
-// tap goes, so a failure leaves the old one running), and destroyed when the
-// last listener leaves.
+// ---- The one event tap ------------------------------------------------------
+
+// Each hook is a listener: the event types it wants and a function that gets
+// each matching event and returns it to pass it on or nullptr to swallow it.
+// The tap is created when the first listener arrives with the union of the
+// listeners' masks, replaced when the set changes (a tap's mask is fixed at
+// creation; the replacement is created before the old tap goes, so a failure
+// leaves the old one running), and destroyed when the last listener leaves.
 namespace event_tap {
 
 using listener_fn_t = CGEventRef (*)(CGEventType type, CGEventRef event);
@@ -195,15 +311,15 @@ inline void destroy(CFMachPortRef tap, CFRunLoopSourceRef source) {
 
 /// Replaces the tap with one for the given mask on the main run loop (the
 /// one webview_run spins), or removes it when the mask is empty. The new tap
-/// is created first; when the system refuses (the Accessibility permission
-/// is missing) the old tap stays as it was and this returns false.
+/// is created first; when the system refuses (the permission is missing)
+/// the old tap stays as it was and this returns false.
 inline bool rebuild(CGEventMask mask) {
   auto &s = state();
   CFMachPortRef tap = nullptr;
   CFRunLoopSourceRef source = nullptr;
   if (mask) {
-    // A default (not listen-only) tap can drop events; that takes the
-    // Accessibility permission, and without it the tap is not created.
+    // A default (filtering) tap can drop events; that takes Device Control
+    // and Data Access, and without it the tap is not created.
     tap = CGEventTapCreate(kCGSessionEventTap, kCGHeadInsertEventTap,
                            kCGEventTapOptionDefault, mask, callback, &s);
     if (!tap) {
@@ -231,26 +347,10 @@ inline CGEventMask combined_mask() {
   return mask;
 }
 
-/// Asks the system to show its Accessibility prompt, once per process
-/// however many installs fail; the caller retries on a later launch, after
-/// the user granted it.
-inline void prompt_for_accessibility() {
-  static bool prompted = false;
-  if (prompted) {
-    return;
-  }
-  prompted = true;
-  const void *keys[] = {kAXTrustedCheckOptionPrompt};
-  const void *values[] = {kCFBooleanTrue};
-  CFDictionaryRef options = CFDictionaryCreate(
-      kCFAllocatorDefault, keys, values, 1, &kCFTypeDictionaryKeyCallBacks,
-      &kCFTypeDictionaryValueCallBacks);
-  AXIsProcessTrustedWithOptions(options);
-  CFRelease(options);
-}
-
 /// Adds a listener and rebuilds the tap for the new set. On failure the
-/// listener is not added and the tap is as it was.
+/// listener is not added, the tap is as it was, and, when auto_request is
+/// on, the system is asked for the permission once per process; the caller
+/// retries on a later launch, after the user granted it.
 inline noresult add(listener_id id, CGEventMask mask, listener_fn_t fn) {
   auto &s = state();
   s.listeners[id].mask = mask;
@@ -260,11 +360,12 @@ inline noresult add(listener_id id, CGEventMask mask, listener_fn_t fn) {
   }
   s.listeners[id].mask = 0;
   s.listeners[id].fn = nullptr;
-  prompt_for_accessibility();
-  return error_info{WEBVIEW_ERROR_MISSING_DEPENDENCY,
-                    "CGEventTapCreate failed: the process needs the "
-                    "Accessibility permission (System Settings > Privacy & "
-                    "Security > Accessibility)"};
+  static bool requested = false;
+  if (auto_request() && !requested) {
+    requested = true;
+    permission_request(WEBVIEW_PERMISSION_DEVICE_CONTROL);
+  }
+  return permission_missing(WEBVIEW_PERMISSION_DEVICE_CONTROL);
 }
 
 /// Removes a listener and rebuilds the tap for what is left, or destroys it

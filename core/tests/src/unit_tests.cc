@@ -263,8 +263,8 @@ TEST_CASE("Keyboard hook: scan code from a bare virtual key on Windows") {
 #if defined(_WIN32) || defined(__APPLE__)
 // The hooks' lifecycle: one of each per process, removable, independent of
 // each other, and honest about their state. On macOS the install itself needs
-// the Accessibility permission, which a test machine may not have granted;
-// the tests then check only the refusal.
+// a permission (webview_feature_permissions) a test machine may not hold; the
+// tests then check only the refusal.
 TEST_CASE("Mouse hook: install once, remove once") {
   auto fn = [](int, double, double, double, unsigned, void *) -> int {
     return 0;
@@ -283,6 +283,38 @@ TEST_CASE("Mouse hook: install once, remove once") {
   REQUIRE(webview_mouse_hook_remove() == WEBVIEW_ERROR_NOT_FOUND);
   REQUIRE(webview_mouse_hook_install(fn, nullptr) == WEBVIEW_ERROR_OK);
   REQUIRE(webview_mouse_hook_remove() == WEBVIEW_ERROR_OK);
+}
+
+// The permission model: a feature says what it needs on this platform, each
+// permission has a status and can be requested, and the answers agree. On
+// Windows nothing needs anything and no permission applies; on macOS both
+// hooks need Device Control and Data Access, which a test machine may or may
+// not hold, and requesting it answers as the status does.
+TEST_CASE("Input hooks: the permission model") {
+  auto mouse = webview_feature_permissions(WEBVIEW_FEATURE_MOUSE_HOOK);
+  auto keys = webview_feature_permissions(WEBVIEW_FEATURE_KEYBOARD_HOOK);
+  REQUIRE(mouse == keys);
+  REQUIRE(webview_feature_permissions(12345) == 0u);
+  REQUIRE(webview_permission_status(0) == WEBVIEW_ERROR_INVALID_ARGUMENT);
+  REQUIRE(webview_permission_request(0) == WEBVIEW_ERROR_INVALID_ARGUMENT);
+#if defined(_WIN32)
+  REQUIRE(mouse == 0u);
+  REQUIRE(webview_permission_status(WEBVIEW_PERMISSION_DEVICE_CONTROL) ==
+          WEBVIEW_ERROR_UNSPECIFIED);
+  REQUIRE(webview_permission_status(WEBVIEW_PERMISSION_INPUT_MONITORING) ==
+          WEBVIEW_ERROR_UNSPECIFIED);
+  REQUIRE(webview_permission_request(WEBVIEW_PERMISSION_DEVICE_CONTROL) ==
+          WEBVIEW_ERROR_UNSPECIFIED);
+#else
+  REQUIRE(mouse == static_cast<unsigned>(WEBVIEW_PERMISSION_DEVICE_CONTROL));
+  auto status = webview_permission_status(WEBVIEW_PERMISSION_DEVICE_CONTROL);
+  REQUIRE((status == WEBVIEW_ERROR_OK ||
+           status == WEBVIEW_ERROR_MISSING_DEPENDENCY));
+  REQUIRE(webview_permission_request(WEBVIEW_PERMISSION_DEVICE_CONTROL) ==
+          status);
+#endif
+  REQUIRE(webview_permission_set_auto_request(0) == WEBVIEW_ERROR_OK);
+  REQUIRE(webview_permission_set_auto_request(1) == WEBVIEW_ERROR_OK);
 }
 
 TEST_CASE("Keyboard hook: install once, remove once") {

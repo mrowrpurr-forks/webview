@@ -33,7 +33,8 @@
 // up, auto-repeat) with its DOM code and the modifier keys held to the
 // caller's function and dropping the ones it says to swallow. Windows: a
 // WH_KEYBOARD_LL hook. macOS: a listener on the CGEventTap in input_hooks.hh,
-// which needs the Accessibility permission. Linux: not supported.
+// which needs the permission the model there names
+// (webview_feature_permissions). Linux: not supported.
 
 #include "../errors.h"
 #include "../errors.hh"

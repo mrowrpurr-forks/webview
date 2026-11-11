@@ -220,18 +220,20 @@ WEBVIEW_API webview_error_t webview_set_asset(webview_t w, const char *path,
  * - Windows: a low-level mouse hook (WH_MOUSE_LL) on the calling thread,
  *   which must pump messages; webview_run does.
  * - macOS: a CGEventTap at the session level on the main run loop, shared
- *   with the keyboard hook. The process needs the Accessibility permission
- *   (System Settings, Privacy & Security, Accessibility); without it this
- *   fails with @c WEBVIEW_ERROR_MISSING_DEPENDENCY after asking the system
- *   to show its prompt once, and the caller falls back to whatever else it
- *   has (for example hit regions). A tap the system disables for being slow
- *   is re-enabled by the library.
+ *   with the keyboard hook. The process needs Device Control and Data
+ *   Access (System Settings > Privacy & Security; see
+ *   @c webview_feature_permissions); without it this fails with
+ *   @c WEBVIEW_ERROR_MISSING_DEPENDENCY, after asking the system for it
+ *   once unless @c webview_permission_set_auto_request turned that off, and
+ *   the caller falls back to whatever else it has (for example hit
+ *   regions). A tap the system disables for being slow is re-enabled by the
+ *   library.
  * - Linux: not supported; fails with @c WEBVIEW_ERROR_UNSPECIFIED.
  *
  * @param fn The callback.
  * @param arg Passed to @p fn as its last argument.
  * @retval WEBVIEW_ERROR_DUPLICATE A mouse hook is already installed.
- * @retval WEBVIEW_ERROR_MISSING_DEPENDENCY macOS: no Accessibility permission.
+ * @retval WEBVIEW_ERROR_MISSING_DEPENDENCY macOS: the permission is missing.
  */
 WEBVIEW_API webview_error_t webview_mouse_hook_install(webview_mouse_hook_fn_t fn,
                                                        void *arg);
@@ -266,8 +268,8 @@ WEBVIEW_API webview_error_t webview_mouse_hook_remove(void);
  * - Windows: a low-level keyboard hook (WH_KEYBOARD_LL) on the calling
  *   thread, which must pump messages; webview_run does.
  * - macOS: key-down, key-up and flags-changed events on the CGEventTap the
- *   mouse hook uses (one tap, one Accessibility prompt, one run-loop
- *   source). A modifier key's press and release arrive as flags-changed and
+ *   mouse hook uses (one tap, one permission, one run-loop source; what
+ *   the mouse hook says about the permission applies). A modifier key's press and release arrive as flags-changed and
  *   are reported as its down and up. Caps Lock reports a down when it turns
  *   the lock on and an up when it turns it off, which is how the key's
  *   events arrive.
@@ -276,7 +278,7 @@ WEBVIEW_API webview_error_t webview_mouse_hook_remove(void);
  * @param fn The callback.
  * @param arg Passed to @p fn as its last argument.
  * @retval WEBVIEW_ERROR_DUPLICATE A keyboard hook is already installed.
- * @retval WEBVIEW_ERROR_MISSING_DEPENDENCY macOS: no Accessibility permission.
+ * @retval WEBVIEW_ERROR_MISSING_DEPENDENCY macOS: the permission is missing.
  */
 WEBVIEW_API webview_error_t
 webview_keyboard_hook_install(webview_keyboard_hook_fn_t fn, void *arg);
@@ -288,6 +290,57 @@ webview_keyboard_hook_install(webview_keyboard_hook_fn_t fn, void *arg);
  * @retval WEBVIEW_ERROR_NOT_FOUND No keyboard hook is installed.
  */
 WEBVIEW_API webview_error_t webview_keyboard_hook_remove(void);
+
+/**
+ * The system permissions a feature needs on this platform, as
+ * @c webview_permission_t bits; 0 when it needs none. On macOS both hooks
+ * need @c WEBVIEW_PERMISSION_DEVICE_CONTROL; on Windows and Linux nothing
+ * needs anything. Ask this first, then @c webview_permission_status for
+ * each bit, and the app knows what it is in for before it installs.
+ *
+ * @param feature A @c webview_feature_t.
+ */
+WEBVIEW_API unsigned webview_feature_permissions(int feature);
+
+/**
+ * Whether the process holds a permission right now. Nothing is shown to the
+ * user.
+ *
+ * @param permission One @c webview_permission_t.
+ * @retval WEBVIEW_ERROR_OK Granted.
+ * @retval WEBVIEW_ERROR_MISSING_DEPENDENCY Not granted (macOS).
+ * @retval WEBVIEW_ERROR_UNSPECIFIED This platform has no such permission.
+ * @retval WEBVIEW_ERROR_INVALID_ARGUMENT Not a @c webview_permission_t.
+ */
+WEBVIEW_API webview_error_t webview_permission_status(unsigned permission);
+
+/**
+ * Asks the system for a permission. On macOS it adds the app to the row in
+ * System Settings > Privacy & Security and shows its dialog each time this
+ * is called while the permission is missing; the user grants it there, and
+ * an install after that succeeds. On a platform without the permission
+ * nothing is shown.
+ *
+ * @param permission One @c webview_permission_t.
+ * @retval WEBVIEW_ERROR_OK Granted (already, or earlier by the user).
+ * @retval WEBVIEW_ERROR_MISSING_DEPENDENCY Still missing; the dialog was
+ *         shown.
+ * @retval WEBVIEW_ERROR_UNSPECIFIED This platform has no such permission.
+ * @retval WEBVIEW_ERROR_INVALID_ARGUMENT Not a @c webview_permission_t.
+ */
+WEBVIEW_API webview_error_t webview_permission_request(unsigned permission);
+
+/**
+ * Whether an install that fails for a missing permission asks the system
+ * for it by itself (once per process, as @c webview_permission_request
+ * would). On by default, so an app that never asks about permissions still
+ * gets the system's dialog the first time it installs a hook. Turn it off
+ * to ask in your own time, for example after explaining why, or only once
+ * per user rather than per launch.
+ *
+ * @param on Non-zero to ask on a failed install, zero not to.
+ */
+WEBVIEW_API webview_error_t webview_permission_set_auto_request(int on);
 
 /**
  * Navigates webview to the given URL. URL may be a properly encoded data URI.

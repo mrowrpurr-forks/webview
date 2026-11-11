@@ -235,6 +235,27 @@ WEBVIEW_API webview_error_t webview_keyboard_hook_remove(void) {
   return api_filter([] { return keyboard_hook::remove(); });
 }
 
+WEBVIEW_API unsigned webview_feature_permissions(int feature) {
+  using namespace webview::detail;
+  return input_hooks::feature_permissions(feature);
+}
+
+WEBVIEW_API webview_error_t webview_permission_status(unsigned permission) {
+  using namespace webview::detail;
+  return api_filter([=] { return input_hooks::permission_status(permission); });
+}
+
+WEBVIEW_API webview_error_t webview_permission_request(unsigned permission) {
+  using namespace webview::detail;
+  return api_filter(
+      [=] { return input_hooks::permission_request(permission); });
+}
+
+WEBVIEW_API webview_error_t webview_permission_set_auto_request(int on) {
+  using namespace webview::detail;
+  return api_filter([=] { return input_hooks::set_auto_request(on != 0); });
+}
+
 WEBVIEW_API webview_error_t webview_navigate(webview_t w, const char *url) {
   using namespace webview::detail;
   if (!url) {

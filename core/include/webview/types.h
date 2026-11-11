@@ -78,6 +78,27 @@ typedef enum {
   WEBVIEW_HINT_FIXED
 } webview_hint_t;
 
+/// A system permission a feature of the library may need, as bits
+/// (webview_feature_permissions says which, per platform).
+typedef enum {
+  /// macOS: "Device Control and Data Access" in System Settings > Privacy &
+  /// Security, which lets a process filter and post input events. What the
+  /// input hooks need there. Windows and Linux have no such permission.
+  WEBVIEW_PERMISSION_DEVICE_CONTROL = 1 << 0,
+  /// macOS: "Input Monitoring", which lets a process watch input events
+  /// without filtering them. No feature of the library needs it; it is here
+  /// so an app can ask about it through the same functions.
+  WEBVIEW_PERMISSION_INPUT_MONITORING = 1 << 1
+} webview_permission_t;
+
+/// A feature of the library that may need a permission.
+typedef enum {
+  /// @c webview_mouse_hook_install.
+  WEBVIEW_FEATURE_MOUSE_HOOK = 0,
+  /// @c webview_keyboard_hook_install.
+  WEBVIEW_FEATURE_KEYBOARD_HOOK = 1
+} webview_feature_t;
+
 /// The modifier keys held when an input hook saw an event, as bits of the
 /// @c modifiers argument of @c webview_mouse_hook_fn_t and
 /// @c webview_keyboard_hook_fn_t. The same four the DOM's KeyboardEvent
