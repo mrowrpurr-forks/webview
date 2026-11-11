@@ -1,5 +1,5 @@
 > [!IMPORTANT]
-> **This is [sweetview-webview](https://github.com/n0t-invented-here/sweetview-webview), a fork of webview.** What the fork adds (`webview_set_asset`, `webview_set_background_color`, system-wide mouse and keyboard hooks, a permission model) is documented in [`sweetview/`](sweetview/). Everything below is upstream's README, unchanged.
+> **This is a fork.** What it adds is documented in [`sweetview/`](sweetview/).
 
 ---
 
