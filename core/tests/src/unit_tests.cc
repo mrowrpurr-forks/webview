@@ -226,6 +226,40 @@ TEST_CASE("Key codes: macOS keycodes to DOM codes") {
   REQUIRE(std::string(dom_code_from_mac_keycode(0x7F)) == "Unidentified");
 }
 
+#if defined(_WIN32)
+// The scan code the keyboard hook names a key by when injected input carries
+// none: derived from the virtual key, with the navigation cluster, Pause and
+// PrintScreen given the codes the keyboard itself would send.
+TEST_CASE("Keyboard hook: scan code from a bare virtual key on Windows") {
+  using webview::detail::keyboard_hook::scan_of;
+  auto bare = [](DWORD vk) {
+    KBDLLHOOKSTRUCT k{};
+    k.vkCode = vk;
+    return scan_of(k);
+  };
+  REQUIRE(bare(VK_DELETE) == 0xE053u);
+  REQUIRE(bare(VK_HOME) == 0xE047u);
+  REQUIRE(bare(VK_LEFT) == 0xE04Bu);
+  REQUIRE(bare(VK_RETURN) == 0x001Cu);
+  REQUIRE(bare(VK_PAUSE) == 0x0045u);
+  REQUIRE(bare(VK_NUMLOCK) == 0xE045u);
+  REQUIRE(bare(VK_SNAPSHOT) == 0xE037u);
+  REQUIRE(bare(VK_RCONTROL) == 0xE01Du);
+  REQUIRE(bare(VK_LWIN) == 0xE05Bu);
+  REQUIRE(bare(VK_DIVIDE) == 0xE035u);
+  REQUIRE(bare(VK_PACKET) == 0u);
+  REQUIRE(bare('Z') == 0x002Cu);
+  // A scan code that is there is used as it is, with the extended flag.
+  KBDLLHOOKSTRUCT k{};
+  k.vkCode = VK_DELETE;
+  k.scanCode = 0x53;
+  k.flags = LLKHF_EXTENDED;
+  REQUIRE(scan_of(k) == 0xE053u);
+  k.flags = 0;
+  REQUIRE(scan_of(k) == 0x0053u); // the numpad's decimal under Num Lock off
+}
+#endif
+
 #if defined(_WIN32) || defined(__APPLE__)
 // The hooks' lifecycle: one of each per process, removable, independent of
 // each other, and honest about their state. On macOS the install itself needs

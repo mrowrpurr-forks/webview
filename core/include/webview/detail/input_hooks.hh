@@ -54,7 +54,8 @@ namespace input_hooks {
 
 /// Whether a key is physically down right now, by the asynchronous key state:
 /// a low-level hook runs before the input reaches any thread's queue, so the
-/// synchronous (per-thread) state is stale.
+/// synchronous (per-thread) state is stale. Inside a keyboard hook the state
+/// does not yet include the event being looked at.
 inline bool key_down(int vk) {
   return (GetAsyncKeyState(vk) & 0x8000) != 0;
 }
@@ -133,27 +134,31 @@ inline unsigned modifiers_from_flags(CGEventFlags flags) {
 // The one event tap. Each hook is a listener: the event types it wants and
 // a function that gets each matching event and returns it to pass it on or
 // nullptr to swallow it. The tap is created when the first listener arrives
-// with the union of the listeners' masks, recreated when the set changes (a
-// tap's mask is fixed at creation), and destroyed when the last one leaves.
+// with the union of the listeners' masks, replaced when the set changes (a
+// tap's mask is fixed at creation; the replacement is created before the old
+// tap goes, so a failure leaves the old one running), and destroyed when the
+// last listener leaves.
 namespace event_tap {
 
 using listener_fn_t = CGEventRef (*)(CGEventType type, CGEventRef event);
 
 enum listener_id { mouse = 0, keyboard = 1, listener_count = 2 };
 
+// No default member values: the library builds as C++11, where those would
+// make this a non-aggregate and listener_t{mask, fn} would not compile.
 struct listener_t {
-  CGEventMask mask{};
-  listener_fn_t fn{};
+  CGEventMask mask;
+  listener_fn_t fn;
 };
 
 struct state_t {
-  listener_t listeners[listener_count]{};
-  CFMachPortRef tap{};
-  CFRunLoopSourceRef source{};
+  listener_t listeners[listener_count];
+  CFMachPortRef tap;
+  CFRunLoopSourceRef source;
 };
 
 inline state_t &state() {
-  static state_t s;
+  static state_t s{}; // zeroed: no listeners, no tap
   return s;
 }
 
@@ -177,35 +182,42 @@ inline CGEventRef callback(CGEventTapProxy /*proxy*/, CGEventType type,
   return event;
 }
 
-inline void destroy() {
-  auto &s = state();
-  if (!s.tap) {
+inline void destroy(CFMachPortRef tap, CFRunLoopSourceRef source) {
+  if (!tap) {
     return;
   }
-  CGEventTapEnable(s.tap, false);
-  CFRunLoopRemoveSource(CFRunLoopGetMain(), s.source, kCFRunLoopCommonModes);
-  CFMachPortInvalidate(s.tap);
-  CFRelease(s.source);
-  CFRelease(s.tap);
-  s.tap = nullptr;
-  s.source = nullptr;
+  CGEventTapEnable(tap, false);
+  CFRunLoopRemoveSource(CFRunLoopGetMain(), source, kCFRunLoopCommonModes);
+  CFMachPortInvalidate(tap);
+  CFRelease(source);
+  CFRelease(tap);
 }
 
-/// Creates the tap for the given mask on the main run loop (the one
-/// webview_run spins); false when the system refuses, which is the
-/// Accessibility permission missing.
-inline bool create(CGEventMask mask) {
+/// Replaces the tap with one for the given mask on the main run loop (the
+/// one webview_run spins), or removes it when the mask is empty. The new tap
+/// is created first; when the system refuses (the Accessibility permission
+/// is missing) the old tap stays as it was and this returns false.
+inline bool rebuild(CGEventMask mask) {
   auto &s = state();
-  // A default (not listen-only) tap can drop events; that takes the
-  // Accessibility permission, and without it the tap is not created.
-  s.tap = CGEventTapCreate(kCGSessionEventTap, kCGHeadInsertEventTap,
+  CFMachPortRef tap = nullptr;
+  CFRunLoopSourceRef source = nullptr;
+  if (mask) {
+    // A default (not listen-only) tap can drop events; that takes the
+    // Accessibility permission, and without it the tap is not created.
+    tap = CGEventTapCreate(kCGSessionEventTap, kCGHeadInsertEventTap,
                            kCGEventTapOptionDefault, mask, callback, &s);
-  if (!s.tap) {
-    return false;
+    if (!tap) {
+      return false;
+    }
+    source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0);
+    CFRunLoopAddSource(CFRunLoopGetMain(), source, kCFRunLoopCommonModes);
+    CGEventTapEnable(tap, true);
   }
-  s.source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, s.tap, 0);
-  CFRunLoopAddSource(CFRunLoopGetMain(), s.source, kCFRunLoopCommonModes);
-  CGEventTapEnable(s.tap, true);
+  CFMachPortRef old_tap = s.tap;
+  CFRunLoopSourceRef old_source = s.source;
+  s.tap = tap;
+  s.source = source;
+  destroy(old_tap, old_source);
   return true;
 }
 
@@ -219,9 +231,15 @@ inline CGEventMask combined_mask() {
   return mask;
 }
 
-/// Asks the system to show its Accessibility prompt (it shows once per
-/// process); the caller retries on a later launch, after the user granted it.
+/// Asks the system to show its Accessibility prompt, once per process
+/// however many installs fail; the caller retries on a later launch, after
+/// the user granted it.
 inline void prompt_for_accessibility() {
+  static bool prompted = false;
+  if (prompted) {
+    return;
+  }
+  prompted = true;
   const void *keys[] = {kAXTrustedCheckOptionPrompt};
   const void *values[] = {kCFBooleanTrue};
   CFDictionaryRef options = CFDictionaryCreate(
@@ -232,19 +250,16 @@ inline void prompt_for_accessibility() {
 }
 
 /// Adds a listener and rebuilds the tap for the new set. On failure the
-/// listener is not added and the tap is put back as it was.
+/// listener is not added and the tap is as it was.
 inline noresult add(listener_id id, CGEventMask mask, listener_fn_t fn) {
   auto &s = state();
-  CGEventMask before = combined_mask();
-  s.listeners[id] = listener_t{mask, fn};
-  destroy();
-  if (create(combined_mask())) {
+  s.listeners[id].mask = mask;
+  s.listeners[id].fn = fn;
+  if (rebuild(combined_mask())) {
     return {};
   }
-  s.listeners[id] = listener_t{};
-  if (before) {
-    create(before); // the other hook keeps running
-  }
+  s.listeners[id].mask = 0;
+  s.listeners[id].fn = nullptr;
   prompt_for_accessibility();
   return error_info{WEBVIEW_ERROR_MISSING_DEPENDENCY,
                     "CGEventTapCreate failed: the process needs the "
@@ -253,15 +268,14 @@ inline noresult add(listener_id id, CGEventMask mask, listener_fn_t fn) {
 }
 
 /// Removes a listener and rebuilds the tap for what is left, or destroys it
-/// when nothing is.
+/// when nothing is. Should the smaller tap be refused, the old one stays and
+/// keeps serving the other listener; the removed one's events pass through
+/// untouched, since its function is gone.
 inline void remove(listener_id id) {
   auto &s = state();
-  s.listeners[id] = listener_t{};
-  destroy();
-  CGEventMask mask = combined_mask();
-  if (mask) {
-    create(mask);
-  }
+  s.listeners[id].mask = 0;
+  s.listeners[id].fn = nullptr;
+  rebuild(combined_mask());
 }
 
 } // namespace event_tap
