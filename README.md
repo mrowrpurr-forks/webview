@@ -1,5 +1,7 @@
-> [!IMPORTANT]
-> **This is a fork.** What it adds is documented in [`sweetview/`](sweetview/).
+# sweetview-webview
+
+> **A fork of [webview](https://github.com/webview/webview) for the sweetview projects.**
+> The fork's additions are documented in [`sweetview/`](sweetview/). Below is upstream's README.
 
 ---
 
